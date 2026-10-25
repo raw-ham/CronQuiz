@@ -10,7 +10,6 @@ Quizzes are AI-generated (Google Gemini). Questions are one-word-answer question
 
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
-- [Scheduling: does it use CRON?](#scheduling-does-it-use-cron)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration (`env.json`)](#configuration-envjson)
@@ -79,27 +78,6 @@ There is also a small demo listener in [`main.js`](file:///Users/rohanbhoi/Deskt
 | [`response.json`](file:///Users/rohanbhoi/Desktop/GroupBot/response.json) | Collected answers/responders (produced at runtime, gitignored). |
 | `session/` | WhatsApp/Puppeteer login session (gitignored). Delete to force a new QR login. |
 | `node_modules.tar.gz` | Pre-packed dependencies (offline install). |
-
----
-
-## Scheduling: does it use CRON?
-
-**No. This project does not use CRON jobs** — not `node-cron`, not a system `crontab`, not any `.cron`/scheduler service file. A search for cron usage in the source turns up nothing.
-
-Instead, all scheduling is done **inside the running Node process** using the built-in `setTimeout`:
-
-| What is scheduled | Where | Mechanism |
-| --- | --- | --- |
-| Daily quiz generation at `fetchTime` | [`quizmaker.js`](file:///Users/rohanbhoi/Desktop/GroupBot/quizmaker.js#L320-L350) | `setTimeout`, re-schedules itself for the next day after each run |
-| Each question's random send time | [`creeper.js`](file:///Users/rohanbhoi/Desktop/GroupBot/creeper.js#L395-L449) | one `setTimeout` per question |
-
-### What this means for you
-
-- **The process must stay running 24/7.** If you close the terminal / kill the process, pending sends are lost and the daily generation won't fire. See [Running 24/7](#running-247).
-- **Timers do not survive a restart** (they live in memory). Mitigations already built in:
-  - `creeper.js` re-schedules the whole day's delivery window on startup (its `initializeQuizScheduler()` runs at module load).
-  - `quizmaker.js` has catch-up logic: if the bot starts *after* `fetchTime` and today's quiz is missing, it generates it immediately.
-- If you prefer real CRON, you can run the bot under an OS scheduler (see [Running 24/7](#running-247)) — but the current code is designed to run as one long-lived process.
 
 ---
 
@@ -282,7 +260,7 @@ Run it with `node leaderboard.js` after saving the snippet (not included here to
 
 ## Running 24/7
 
-Because there is **no CRON** and timers are in-memory, the bot must run as a continuous process. Common options:
+Because the schedulers rely on in-memory timers, the bot must run as a continuous process. Common options:
 
 - **pm2** (simplest):
   ```bash
@@ -311,7 +289,7 @@ On a headless server, run Puppeteer without a display (pass `--no-sandbox` args 
 
 ## Known limitations
 
-- **No CRON / no persistence of schedules** — restarting the process clears pending `setTimeout` timers (the schedulers re-arm on startup, but in-flight sends for the current window may be missed).
+- **In-memory schedules** — restarting the process clears pending `setTimeout` timers (the schedulers re-arm on startup, but in-flight sends for the current window may be missed).
 - **`answerTime` is not enforced** — it is stored in `quiz.json` but no timer currently closes answering after that many seconds; answers are instead bounded by `maxResponse`.
 - **Exact-match grading** — an answer must equal the quiz answer after trim + lowercase; typos/spelling variants are not accepted.
 - **Delivery window is same-day only** — it does not wrap past midnight.
